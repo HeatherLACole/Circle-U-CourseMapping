@@ -1,0 +1,195 @@
+#Coursemapping Aarhus University
+
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+import time
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import pandas as pd
+
+# keywords to search for danish/english -  variable
+keyword1 = "climate change"
+keyword2 = "klimaforandringer"
+
+#the webpage we want to load
+url = "https://kursuskatalog.au.dk/en/?year=2025"
+
+#store the results in a list
+matched_courses = []
+
+#function to click the "Next Page" button, by identifying it in html
+#this might differ for different course catalogues
+def go_to_next_page():
+    """Find the "next page" button at the bottom of a single page of search results, click it, and allow the next page of results
+    to load."""
+    next_button = WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.CSS_SELECTOR, "button.icon-next[title='Next page']")) #html variable
+    )
+    next_button.click()
+    WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CSS_SELECTOR, 'a[href*="/course/"]')) #html variable
+    )
+
+def search_courses():
+    """On a single page of search results containing university courses, click through each course consecutively 
+    and add it to a list if a control f style search of the text on the page contains a keyword. 
+    Click to next page when 25 courses have been checked."""
+    
+    global matched_courses
+    
+    #Load please
+    time.sleep(5)
+    
+    #find all course links, using html (variable)
+    courses = driver.find_elements(By.CSS_SELECTOR, 'a[href*="/course/"]')
+    
+    #initialize a counter
+    courses_checked = 0
+    
+    for course in courses:
+        #identify the course link
+        link = course.get_attribute('href')
+
+        #open the course link
+        driver.execute_script("window.open(arguments[0], '_blank');", link)
+        driver.switch_to.window(driver.window_handles[-1])  # Switch to the new tab
+
+        #let the course page load completely
+        time.sleep(3)
+
+        #retrieve the entire page content
+        page_content = driver.find_element(By.TAG_NAME, "body").text 
+        
+        #initialize keyword details
+        keyword_found = None
+        keyword1_count = page_content.count(keyword1.lower())
+        keyword2_count = page_content.count(keyword2.lower())
+
+        #check if either keyword is present (requiring at least 2 hits on page) and collect details
+        if keyword1_count > 1 or keyword2_count > 1:
+            keyword_found = keyword1 if keyword1_count > keyword2_count else keyword2
+            course_info = {
+                "Course URL": link,
+                "Keyword Found": keyword_found,
+                f"{keyword1} Count": keyword1_count,
+                f"{keyword2} Count": keyword2_count
+            }
+            matched_courses.append(course_info)
+            print(f"Keyword '{keyword_found}' found in: {link}")
+    
+        #close the tab and switch back to the original page
+        driver.close()
+        driver.switch_to.window(driver.window_handles[0])
+        
+        #+1 course checked
+        courses_checked += 1
+        
+        #once we've processed 25 courses, go to the next page using next page function - this number is variable
+        if courses_checked == 25:
+            print("Processed 25 courses. Moving to next page...")
+            time.sleep(3)
+            go_to_next_page()
+            return  #exit the function so we don't process more courses on this page
+
+#you need to know this number and it will change between course catalogues. 
+number_of_courses_last_page = 6
+
+def search_courses_last_page():
+    """On a single page of search results containing university courses, click through each course consecutively 
+    and add it to a list if a control f style search of the text on the page contains a keyword. Same function as before, but does not
+    click to next page at the end. 
+    """
+    
+    global matched_courses
+    global number_of_courses_last_page
+    
+    #find all course links (html variable)
+    courses = driver.find_elements(By.CSS_SELECTOR, 'a[href*="/course/"]')
+    
+    #initialize a counter
+    courses_checked = 0
+    
+    for course in courses:
+        link = course.get_attribute('href')
+
+        #open the course link
+        driver.execute_script("window.open(arguments[0], '_blank');", link)
+        driver.switch_to.window(driver.window_handles[-1])  # Switch to the new tab
+
+        #let the course page load completely
+        time.sleep(3)
+
+        #retrieve the entire page content
+        page_content = driver.find_element(By.TAG_NAME, "body").text
+        
+        #initialize keyword details
+        keyword_found = None
+        keyword1_count = page_content.count(keyword1.lower())
+        keyword2_count = page_content.count(keyword2.lower())
+
+        #check if either keyword is present (requiring at least 2 hits on page) and collect details
+        if keyword1_count > 1 or keyword2_count > 1:
+            keyword_found = keyword1 if keyword1_count > keyword2_count else keyword2
+            course_info = {
+                "Course URL": link,
+                "Keyword Found": keyword_found,
+                f"{keyword1} Count": keyword1_count,
+                f"{keyword2} Count": keyword2_count
+            }
+            matched_courses.append(course_info)
+            print(f"Keyword '{keyword_found}' found in: {link}")
+    
+        #close the tab and switch back to the original page
+        driver.close()
+        driver.switch_to.window(driver.window_handles[0])
+        
+        #+1 courses checked
+        courses_checked += 1
+        
+        #once we've processed all courses on last page, return
+        if courses_checked == number_of_courses_last_page:
+            print("Processed all courses.")
+            time.sleep(3) 
+            return  
+
+#run on all
+
+#set up webdriver
+driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
+
+# open the webpage
+driver.get(url)
+
+# let the page load completely 
+time.sleep(5)
+
+#accept cookies?
+# Wait for the "Accept all" button to appear and click it
+try:
+    accept_button = WebDriverWait(driver, 10).until(
+        EC.element_to_be_clickable((By.ID, "cookiescript_accept")) #html variable
+    )
+    accept_button.click()
+    print("Cookies accepted!")
+except Exception as e:
+    print(f"An error occurred: {e}")
+    
+# let the page load completely 
+time.sleep(5)    
+
+# run the search on the first 171 pages
+for _ in range(171):  # adjust the range for more pages as needed
+    search_courses()
+
+#run the search on the last page
+search_courses_last_page()
+
+# after the loop, save the matched courses to a dataframe
+df = pd.DataFrame(matched_courses)
+
+!pip install openpyxl
+
+#save as excel file
+df.to_excel("matchedcourses_AarhusUniversity.xlsx", index=False)
+
