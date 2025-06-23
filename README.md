@@ -1,5 +1,5 @@
 # Circle-U-CourseMapping
-Webscraping programs tailor made for specific Circle U Universities course catalogues, so search for courses with a given keyword/s in the description. 
+Webscraping programs tailor-made for specific Circle U University course catalogues, to search for courses with a given keyword/s in the course description. 
 
 # Notes on setup and installations
 The following requires anaconda prompt and jupyter lab. 
