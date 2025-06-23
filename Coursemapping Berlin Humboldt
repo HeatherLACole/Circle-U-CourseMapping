@@ -1,0 +1,164 @@
+#Coursemapping Humboldt University Berlin
+
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+import time
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import pandas as pd
+from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import NoSuchElementException
+
+# keywords to search for german/english -  we can change these
+keyword1 = "climate change"
+keyword2 = "Klimawandel"
+
+url = "https://agnes.hu-berlin.de/lupo/rds?state=wsearchv&search=1&subdir=veranstaltung&veranstaltung.semester=20251&P_start=0&P_anzahl=50&P.sort=&_form=display"
+
+#store the results in a list
+matched_courses = []
+
+def search_courses():
+    """on a list of search results of 50 courses, identifies the links which are courses, and clicks them one by one, performing a cntl f style search of the text
+    content (course title, description etc), searching for certain key words"""
+    global matched_courses
+    
+    #load please
+    time.sleep(5)
+    
+    #find all course links, using html (this might differ between course catalogues)
+    courses = driver.find_elements(By.CSS_SELECTOR,'a.regular[href*="moduleCall=webInfo"][title^="Mehr Informationen zu"]')
+    
+    #initialize a counter
+    courses_checked = 0
+    
+    for course in courses:
+        #identify the course link
+        link = course.get_attribute('href')
+
+        #open the course link
+        driver.execute_script("window.open(arguments[0], '_blank');", link)
+        driver.switch_to.window(driver.window_handles[-1])  # Switch to the new tab
+
+        #let the course page load completely
+        time.sleep(3)
+
+        #retrieve the entire page content
+        page_content = driver.find_element(By.TAG_NAME, "body").text
+        
+        #initialize keyword details
+        keyword_found = None
+        keyword1_count = page_content.count(keyword1.lower())
+        keyword2_count = page_content.count(keyword2.lower())
+
+        #check if either keyword is present and collect details
+        if keyword1_count > 0 or keyword2_count > 0: #note this time I checked if keyword was present at all, and removed the “false positive” results manually
+            keyword_found = keyword1 if keyword1_count > keyword2_count else keyword2
+            course_info = {
+                "Course URL": link,
+                "Keyword Found": keyword_found,
+                f"{keyword1} Count": keyword1_count,
+                f"{keyword2} Count": keyword2_count
+            }
+            matched_courses.append(course_info)
+            print(f"Keyword '{keyword_found}' found in: {link}")
+    
+        #close the tab and switch back to the original page
+        driver.close()
+        driver.switch_to.window(driver.window_handles[0])
+        #print(f"processed course {courses_checked}")
+        
+        #+1 course checked
+        courses_checked += 1
+        
+    
+        #once we've processed 50 courses, go to the next page using next page function
+        if courses_checked == 50:
+            print("Processed 50 courses. Moving to next page...")
+            time.sleep(3)
+            return  #exit the function
+
+def search_last_page():
+    global matched_courses
+    
+    #load please
+    time.sleep(5)
+    
+    #find all course links, using html (this might differ between course catalogues)
+    courses = driver.find_elements(By.CSS_SELECTOR,'a.regular[href*="moduleCall=webInfo"][title^="Mehr Informationen zu"]')
+    
+    for course in courses:
+        #identify the course link
+        link = course.get_attribute('href')
+
+        #open the course link
+        driver.execute_script("window.open(arguments[0], '_blank');", link)
+        driver.switch_to.window(driver.window_handles[-1])  # Switch to the new tab
+
+        #let the course page load completely
+        time.sleep(3)
+
+        #retrieve the entire page content
+        page_content = driver.find_element(By.TAG_NAME, "body").text
+        
+        #initialize keyword details
+        keyword_found = None
+        keyword1_count = page_content.count(keyword1.lower())
+        keyword2_count = page_content.count(keyword2.lower())
+
+        #check if either keyword is present (requiring at least 2 hits on page) and collect details
+        if keyword1_count > 0 or keyword2_count > 0:
+            keyword_found = keyword1 if keyword1_count > keyword2_count else keyword2
+            course_info = {
+                "Course URL": link,
+                "Keyword Found": keyword_found,
+                f"{keyword1} Count": keyword1_count,
+                f"{keyword2} Count": keyword2_count
+            }
+            matched_courses.append(course_info)
+            print(f"Keyword '{keyword_found}' found in: {link}")
+    
+        #close the tab and switch back to the original page
+        driver.close()
+        driver.switch_to.window(driver.window_handles[0])
+
+#function to travel between pages of results
+#for berlin there is no “next page”, only page numbers
+def go_to_page(number: int):
+    """Find the button for the correctly numbered page at the bottom of the search results page, and click it."""
+    
+    # use XPath to select <a> with class "linkAsButton" and exact text matching the page number
+    page_button = WebDriverWait(driver, 10).until(
+        EC.element_to_be_clickable(
+            (By.XPATH, f"//a[contains(@class, 'linkAsButton') and normalize-space(text())='{number}']")
+        )
+    )
+    page_button.click()
+    #wait for an element specific to the next page to be visible 
+    WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.CSS_SELECTOR, 'a.regular[href*="moduleCall=webInfo"][title^="Mehr Informationen zu"]')) 
+    )
+
+#set up webdriver
+driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
+
+#open the webpage
+driver.get(url)
+
+#let the page load completely 
+time.sleep(5)
+
+for i in range(1, 91):  # from 1 to 90 inclusive
+    search_courses()   # process all courses on current page
+    time.sleep(5)
+    if i < 90:
+        go_to_page(i + 1)  # click button for next page
+        
+#finally search last page
+search_last_page()
+
+df = pd.DataFrame(matched_courses)
+!pip install openpyxl
+df.to_excel("matchedcourses_berlin.xlsx", index=False)
