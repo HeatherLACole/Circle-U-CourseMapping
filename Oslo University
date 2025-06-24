@@ -1,0 +1,134 @@
+#Coursemapping Oslo University
+
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+import time
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import pandas as pd
+from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import NoSuchElementException
+
+# keywords to search for norwegian/english -  we can change these
+keyword1 = "climate change"
+keyword2 = "klimaendringer"
+
+url = "https://www.uio.no/english/studies/courses/all/"
+
+#store the results in a list
+matched_courses = []
+
+def search_courses():
+    """on a list of search results of courses, identifies the links which are courses, and clicks them one by one, performing a cntl f style search of the text
+    content (course title, description etc), searching for certain key words"""
+    global matched_courses
+    
+    #Load please
+    time.sleep(5)
+    
+    #find all course links, using html (variable)
+    courses = driver.find_elements(By.CSS_SELECTOR, 'td.vrtx-course-description-name > a')
+    
+    for course in courses:
+        #identify the course link
+        link = course.get_attribute('href')
+
+        #open the course link
+        driver.execute_script("window.open(arguments[0], '_blank');", link)
+        driver.switch_to.window(driver.window_handles[-1])  # Switch to the new tab
+
+        #let the course page load completely
+        time.sleep(3)
+
+        #retrieve the entire page content
+        page_content = driver.find_element(By.TAG_NAME, "body").text
+        
+        #initialize keyword details
+        keyword_found = None
+        keyword1_count = page_content.count(keyword1.lower())
+        keyword2_count = page_content.count(keyword2.lower())
+
+        #check if either keyword is present and collect details
+        if keyword1_count > 0 or keyword2_count > 0:
+            keyword_found = keyword1 if keyword1_count > keyword2_count else keyword2
+            course_info = {
+                "Course URL": link,
+                "Keyword Found": keyword_found,
+                f"{keyword1} Count": keyword1_count,
+                f"{keyword2} Count": keyword2_count
+            }
+            matched_courses.append(course_info)
+            print(f"Keyword '{keyword_found}' found in: {link}")
+    
+        #close the tab and switch back to the original page
+        driver.close()
+        driver.switch_to.window(driver.window_handles[0])
+        #print(f"processed course {courses_checked}")
+        
+        
+    print("processed all courses on this page")
+    return
+
+#function to travel between pages of results
+#for oslo there is no next page, only page numbers
+def go_to_page(number: int):
+    """Find the button for the correctly numbered page at the bottom of the search results page, and click it."""
+    
+    # Use XPath to select <a> with class "linkAsButton" and exact text matching the page number
+    page_button = WebDriverWait(driver, 10).until(
+        EC.element_to_be_clickable(
+            (By.XPATH, f"//a[contains(@class, 'vrtx-page-number') and normalize-space(text())='{number}']") #html variable
+        )
+    )
+    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);") #scroll to bottom of page in order to find page buttons
+    time.sleep(1)
+    page_button.click()
+    WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located(
+            (By.CSS_SELECTOR, 'td.vrtx-course-description-name > a') #html variable
+        )
+    )
+
+# working loop
+#set up webdriver
+driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
+print("Driver session id after creation:", driver.session_id) #debugging
+
+#open the webpage
+driver.get(url)
+
+#let the page load completely 
+time.sleep(5)
+
+#accept cookies?
+# Wait for the "Accept all" button to appear and click it
+try:
+    accept_button = WebDriverWait(driver, 10).until(
+        EC.element_to_be_clickable((By.CSS_SELECTOR, "button.consent-accept-all.button-large")) #html variable
+    )
+    accept_button.click()
+    print("Cookies accepted!")
+except Exception as e:
+    import traceback
+    print("Exception type:", type(e))
+    traceback.print_exc()
+    
+# Let the page load completely 
+time.sleep(5)    
+
+# initial search on page 1
+search_courses()
+
+for i in range(2, 11):  # loop through all pages
+    go_to_page(i)
+    # wait for page content to load
+    WebDriverWait(driver, 10).until(
+        EC.presence_of_element_located((By.CSS_SELECTOR, 'td.vrtx-course-description-name > a'))
+    )
+    search_courses()
+
+df = pd.DataFrame(matched_courses)
+!pip install openpyxl
+df.to_excel("matchedcourses_oslo.xlsx", index=False)
