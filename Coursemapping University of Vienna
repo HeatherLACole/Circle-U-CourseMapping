@@ -1,0 +1,97 @@
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
+import time
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import pandas as pd
+from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import NoSuchElementException
+
+# keywords to search for german/english -  we can change these
+keyword1 = "climate change"
+keyword2 = "Klimawandel"
+
+url="https://ufind.univie.ac.at/en/vvz.html"
+
+#store the results in a list
+matched_courses = []
+
+def click_to_courses():
+    #Load please
+    time.sleep(5)
+    #find all degree links, using html (this might differ between course catalogues)
+    degrees = driver.find_elements(By.CSS_SELECTOR, 'a.link[href^="vvz_sub.html?semester=2025W"]')
+    
+    for degree in degrees:
+        #identify the degree link
+        degree_link = degree.get_attribute('href')
+        
+         #open the degree link
+        driver.execute_script("window.open(arguments[0], '_blank');", degree_link)
+        driver.switch_to.window(driver.window_handles[-1])  # Switch to the new tab
+        
+         #let the degree page load completely
+        time.sleep(3)
+        
+        courses = driver.find_elements(By.CSS_SELECTOR, 'a.what') #html variable
+        
+        for course in courses:
+            #identify the degree link
+            course_link = course.get_attribute('href')
+        
+             #open the degree link
+            driver.execute_script("window.open(arguments[0], '_blank');", course_link)
+            driver.switch_to.window(driver.window_handles[-1])  # Switch to the new tab
+            
+            time.sleep(5)
+            #print(f"opened {course_link}!")
+            search_course(course_link)
+            
+            #close the tab and switch back to the original page
+            driver.close()
+            driver.switch_to.window(driver.window_handles[-1])
+            
+        
+         #close the tab and switch back to the original page
+        driver.close()
+        driver.switch_to.window(driver.window_handles[0])
+
+def search_course(course_link):
+    "searches for keywords in a course description and title"
+    
+    #retrieve the entire page content
+    page_content = driver.find_element(By.TAG_NAME, "body").text.lower() 
+    
+     #initialize keyword details
+    keyword_found = None
+    keyword1_count = page_content.count(keyword1.lower())
+    keyword2_count = page_content.count(keyword2.lower())
+
+    #check if either keyword is present and collect details
+    if keyword1_count > 0 or keyword2_count > 0:
+        keyword_found = keyword1 if keyword1_count > keyword2_count else keyword2
+        course_info = {
+            "Course URL": course_link,
+            "Keyword Found": keyword_found,
+            f"{keyword1} Count": keyword1_count,
+            f"{keyword2} Count": keyword2_count
+        }
+        matched_courses.append(course_info)
+        print(f"Keyword '{keyword_found}' found in: {course_link}")
+
+#set up webdriver
+driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
+
+#open the webpage
+driver.get(url)
+
+#let the page load completely 
+time.sleep(5)
+
+click_to_courses()
+
+df = pd.DataFrame(matched_courses)
+!pip install openpyxl
+df.to_excel("matchedcourses_vienna.xlsx", index=False)
